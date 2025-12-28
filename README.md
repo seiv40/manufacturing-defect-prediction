@@ -1,132 +1,50 @@
 # SECOM Manufacturing Defect Prediction
 
-Predictive analysis of sensor data from semiconductor manufacturing to identify factors contributing to production failures.
+Can you predict semiconductor manufacturing failures from sensor data? Turns out yes, but the interesting part isn't the prediction - it's figuring out the right tradeoff between how many failures you catch vs. how much you're willing to inspect.
 
-## Dataset
+## Data
 
-SECOM Dataset (UCI Machine Learning Repository)
-- 1,567 production runs
-- 590 sensor measurements per run
-- Binary outcome: Pass (1,463) / Fail (104)
-- Severe class imbalance: 14:1 ratio
+Using the SECOM dataset from UCI - 1,567 production runs with 590 sensor measurements each. Only 104 are failures, so you're dealing with severe class imbalance (14:1 ratio).
 
-## Objective
+## What I Built
 
-Identify which sensor measurements are most predictive of manufacturing failures to enable early detection and cost-optimized quality control.
+The data needed a lot of cleaning. Started with 590 sensors but 116 were constant (completely useless) and 28 were missing over half their values. After removing those and some highly correlated duplicates, ended up with 446 sensors.
 
-## Methods
+Used mutual information on the training set to select the top 75 features. Also created missing data indicators for sensors that frequently dropped out - these actually turned out to be some of the most predictive features. Apparently when sensors fail to report, that's often a sign something's wrong with the process.
 
-### 1. Exploratory Analysis
-Script: `exploratory_analysis.py`
+Tried Random Forest, XGBoost, and logistic regression. Random Forest with SMOTE worked best. Applied threshold optimization to balance recall vs. inspection cost.
 
-- Analyzed class distribution and imbalance patterns
-- Identified missing data: 4.5% overall, 28 sensors >50% missing
-- Discovered 116 constant sensors (zero variance)
-- Evaluated feature correlations with failures (max r=0.156)
-
-### 2. Feature Engineering & Selection
-Script: `feature_selection.py`
-
-- Removed 116 constant sensors and 28 high-missing sensors
-- Eliminated 175 redundant sensors (>0.95 correlation)
-- Created 52 missing data indicator features
-- Applied composite ranking: correlation + mutual information + Random Forest importance
-- Result: Reduced 590 → 127 features (78% reduction)
-
-### 3. Modeling & Threshold Optimization
-Scripts: `modeling.py`, `modeling_production.py`
-
-- Tested algorithms: Logistic Regression, Random Forest, XGBoost
-- Handled class imbalance: SMOTE oversampling + class weights
-- Optimized decision thresholds for recall vs. inspection rate tradeoff
-- Evaluated multiple cost-based operating points
-
-### 4. Hyperparameter Tuning
-Script: `hyperparameter_tuning.py`
-
-- Randomized search over 50 parameter combinations
-- 5-fold stratified cross-validation
-- Optimized for recall (priority: catching failures)
-
-### 5. Interpretability Analysis
-Scripts: `domain_interpretation.py`, `shap_analysis.py`
-
-- Clustered sensors into 8 process-stage groups using hierarchical clustering
-- Generated SHAP explanations for individual predictions
-- Identified stable early-warning sensors vs. late-detection signals
+Also used SHAP for interpretability so you can see exactly why the model flags specific production runs.
 
 ## Results
 
-### Model Performance (Test Set)
+Test set: **AUC 0.77** (cross-validation: 0.62 ± 0.05)
 
-| Model | ROC-AUC | Recall @ t=0.15 | Inspection Rate |
-|-------|---------|-----------------|-----------------|
-| Random Forest (optimized) | 0.84 | 73% | 18% |
-| XGBoost + SMOTE | 0.82 | 69% | 22% |
-| Logistic Regression | 0.76 | 46% | 12% |
+Depending on how aggressive you want to be:
+- Threshold 0.05: catches all 26 failures but you inspect 89% of production
+- Threshold 0.15: catches 21/26 failures, inspect 45% (balanced)
+- Threshold 0.25: catches 17/26 failures, inspect 24% (conservative)
 
-### Cost-Based Operating Points
+So if missing a defect is really expensive, you can catch everything - but it costs you. If inspection is the bottleneck, you can dial it back and still catch most failures.
 
-Different thresholds for different business priorities:
+Top predictive features were sensor_247, sensor_519, and their missing indicators. Organized sensors into 8 clusters that probably represent different process stages.
 
-| Strategy | Threshold | Recall | Inspection Rate | Use Case |
-|----------|-----------|--------|-----------------|----------|
-| Conservative | 0.25 | 46% | 11% | Low inspection capacity |
-| Balanced | 0.15 | 73% | 18% | Standard operations |
-| Aggressive | 0.05 | 96% | 64% | High-value production |
+## Main Findings
 
-Main Tradeoff: Achieving 73% recall requires inspecting 18% of production (19 of 26 failures caught). For 96% recall (25 of 26 failures), inspection rate increases to 64%, demonstrating the precision-recall tradeoff fundamental to cost-based decision making in manufacturing.
+Missing data is informative. Four of the top 10 features were just "did this sensor fail to report" flags. Sensor failures correlate with process issues.
 
-### Feature Insights
+Threshold tuning matters way more than hyperparameter optimization. An extra 0.01 AUC doesn't help much, but getting the cost tradeoff right is critical for deployment.
 
-Top Predictive Sensors:
-1. sensor_59 (importance: 3.8%)
-2. sensor_33 (importance: 2.9%)
-3. sensor_130 (importance: 2.7%)
-4. sensor_510 (importance: 2.4%)
-
-Process:
-- Identified 8 sensor clusters representing distinct process stages
-- Missing data indicators turned out predictive (sensor health correlates with process quality)
-- 15 stable early-warning sensors identified via cross-validation consistency
-
-### Main Findings
-
-1. Threshold optimization more impactful than oversampling
-   - SMOTE: 46% → 69% recall
-   - Threshold tuning: 69% → 96% recall
-
-2. Missing data is informative
-   - Created 52 missing indicators as features
-   - Sensor failures may signal upstream process issues
-
-3. Interpretability enables deployment
-   - SHAP values explain individual predictions
-   - Domain clustering maps sensors to process stages
-   - Actionable insights for process engineers
-
-## Tech Stack
-
-- Python 3.14
-- Data Processing: pandas, numpy
-- Machine Learning: scikit-learn, xgboost, imbalanced-learn
-- Interpretability: SHAP
-- Visualization: matplotlib, seaborn
-
-## How to Run
+## Running It
 
 ```bash
-# Install dependencies
 pip install pandas numpy scikit-learn xgboost imbalanced-learn shap matplotlib seaborn scipy
 
-# Run analysis pipeline (in order)
 python exploratory_analysis.py
-python feature_selection.py
-python modeling_optimized.py
+python modeling.py
 python hyperparameter_tuning.py
 python domain_interpretation.py
 python shap_analysis.py
-
-# Optional: Generate pipeline diagram
-python create_pipeline_diagram.py
 ```
+
+The modeling.py script does the train/test split and feature selection. Other scripts load the pre-split data so everything uses the same partition.
