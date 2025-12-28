@@ -41,6 +41,7 @@ Threshold tuning matters way more than hyperparameter optimization. An extra 0.0
 pip install pandas numpy scikit-learn xgboost imbalanced-learn shap matplotlib seaborn scipy
 
 python exploratory_analysis.py
+python feature_selection.py
 python modeling.py
 python hyperparameter_tuning.py
 python domain_interpretation.py
